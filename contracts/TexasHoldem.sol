@@ -116,10 +116,11 @@ contract TexasHoldem {
     /// @notice 创建事件：当确定获胜者触发
     /// @dev 创建事件：当确定获胜者触发
     /// @param _tableId 游戏桌ID
-    /// @param _numWinners 赢家地址列表
+    /// @param _numWinners 赢家个数
     /// @param _winnerList 赢家地址列表
+    /// @param _handRank 赢家的卡强弱排名: 0：表示除了赢家，其余人都弃牌；1~10:代表不同的强度，以此递增
     /// @param _revenuePerWinner 每个赢家的金额
-    event Winner(uint256 _tableId, uint256 _numWinners, address[] _winnerList, uint256 _revenuePerWinner);
+    event Winner(uint256 _tableId, uint256 _numWinners, address[] _winnerList, uint256 _handRank, uint256 _revenuePerWinner);
     
     // 创建游戏桌
     function createTable(uint256 _smallBlind, uint256 _bigBlind, address _tokenAddr) public {
@@ -310,6 +311,8 @@ contract TexasHoldem {
         // 发牌
         for (uint256 i = 0; i < table.playerAddrList.length; i++) {
             address addr = table.playerAddrList[i];
+            // 重置强弱排名为0
+            table.mapPlayer[addr].handRank = 0;
             // 玩家获取第一张底牌
             table.mapPlayer[addr].hand.push(table.deck[i]);
             // 玩家获取第二张底牌
@@ -401,7 +404,7 @@ contract TexasHoldem {
             address[] memory winners = new address[](1);
             winners[0] = winnerAddr;
             // 触发游戏赢家事件
-            emit Winner(table.id, 1, winners, table.pot);
+            emit Winner(table.id, 1, winners, 0, table.pot);
             // 重置游戏数据
             resetGame(table);
         } else {
@@ -432,7 +435,7 @@ contract TexasHoldem {
         for (uint256 i = 0; i < table.playerAddrList.length; i++) {
             address addr = table.playerAddrList[i];
             table.mapPlayer[addr].bet = 0;
-            table.mapPlayer[addr].handRank = 0;
+            // table.mapPlayer[addr].handRank = 0;  // 不重置为0，游戏结束后，方便查看, 新一轮游戏开始发牌时，再重置为0；
             table.mapPlayer[addr].active = true;
             table.mapPlayer[addr].hand = new uint256[](0);
         }
@@ -511,7 +514,7 @@ contract TexasHoldem {
             table.mapPlayer[winners[i]].balance += winnings;
         }
         table.pot = 0;
-        emit Winner(table.id, numWinners, winners, winnings);
+        emit Winner(table.id, numWinners, winners, table.mapPlayer[winners[0]].handRank, winnings);
     }
     
     // 追加筹码

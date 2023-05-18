@@ -240,7 +240,10 @@ describe("TexasHoldem", function () {
     it("player2(small blind position) check card, call check function from amdin address", async function () {
       await playerAction(numTable, player2, "check");
     });
+  });
 
+  // TURN: 转牌轮游戏
+  describe("TURN Round -- fold", function () {
     // player3弃牌（大盲注位），由amdin地址调用fold函数
     it("player3(big blind position) fold card, call fold function from amdin address", async function () {
       await playerAction(numTable, player3, "fold");
@@ -316,10 +319,14 @@ describe("TexasHoldem", function () {
         if (logInfo.name === "Winner") {
           logMsg = "      TableID:" + parseInt(logInfo.args._tableId, 10) + ", Winner Number:" + parseInt(logInfo.args._numWinners, 10) + ", Winner:[ ";
           for(i = 0; i < parseInt(logInfo.args._numWinners, 10); i++) {
+            // playerInfo = await game.getPlayerInfo(numTable, logInfo.args._winnerList[i]);
+            // logMsg += "player:" + logInfo.args._winnerList[i] + ", strength of cards:" + playerInfo.handRank + "\n";
+
             logMsg += logInfo.args._winnerList[i] + " ";
           }
-          logMsg += "], per winner would revenue:" + parseInt(logInfo.args._revenuePerWinner, 10);
+          logMsg += "], strength of cards:" + parseInt(logInfo.args._handRank, 10) + ", per winner would revenue:" + parseInt(logInfo.args._revenuePerWinner, 10);
           console.log(logMsg);
+
         } else if(logInfo.name === "GameOver") {
           // console.log(logInfo);
           gameOver = true;
