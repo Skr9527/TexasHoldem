@@ -20,6 +20,7 @@ contract TexasHoldem {
     struct Player {
         uint256 bet; // 玩家当前下注的筹码数
         uint256 handRank; // 玩家的手牌强弱
+        uint256[] bestHand; // 玩家手中的牌和公共牌组成的最优牌
         uint256 balance; // 玩家的剩余筹码
         bool active; // 玩家是否已弃牌
         uint256[] hand; // 玩家的手牌
@@ -254,6 +255,7 @@ contract TexasHoldem {
         returns (
             uint256 bet, 
             uint256 handRank, 
+            uint256[] memory bestHand,
             uint256 balance, 
             bool active, 
             uint256[] memory hand) {
@@ -261,6 +263,7 @@ contract TexasHoldem {
         Table storage table = tables[tableId];
         bet = table.mapPlayer[player].bet;
         handRank = table.mapPlayer[player].handRank;
+        bestHand = table.mapPlayer[player].bestHand;
         balance = table.mapPlayer[player].balance;
         active = table.mapPlayer[player].active;
         hand = table.mapPlayer[player].hand;
@@ -311,8 +314,12 @@ contract TexasHoldem {
         // 发牌
         for (uint256 i = 0; i < table.playerAddrList.length; i++) {
             address addr = table.playerAddrList[i];
+            // 激活玩家
+            table.mapPlayer[addr].active = true;
             // 重置强弱排名为0
             table.mapPlayer[addr].handRank = 0;
+            // 重置最优组合牌
+            table.mapPlayer[addr].bestHand = new uint256[](0);
             // 玩家获取第一张底牌
             table.mapPlayer[addr].hand.push(table.deck[i]);
             // 玩家获取第二张底牌
@@ -436,7 +443,7 @@ contract TexasHoldem {
             address addr = table.playerAddrList[i];
             table.mapPlayer[addr].bet = 0;
             // table.mapPlayer[addr].handRank = 0;  // 不重置为0，游戏结束后，方便查看, 新一轮游戏开始发牌时，再重置为0；
-            table.mapPlayer[addr].active = true;
+            // table.mapPlayer[addr].active = true;
             table.mapPlayer[addr].hand = new uint256[](0);
         }
         // 重置公共牌(不清空，启动新一轮时设置方便查看)
@@ -479,6 +486,7 @@ contract TexasHoldem {
     // 确定获胜者
     function determineWinner(Table storage table) internal {
         uint256[] memory handRanks = new uint256[](table.playerAddrList.length);
+        uint256[] memory bestHand;
         for (uint256 i = 0; i < table.playerAddrList.length; i++) {
             address addr = table.playerAddrList[i];
             uint256[] memory allCards = new uint256[](table.board.length + 2);
@@ -488,9 +496,11 @@ contract TexasHoldem {
                 allCards[j + 2] = table.board[j];
             }
             // 计算玩家的牌的强弱
-            handRanks[i] = calculateHandRank(allCards);
+            (handRanks[i], bestHand) = calculateHandRank(allCards);
             // 保存牌的强弱
             table.mapPlayer[addr].handRank = handRanks[i];
+            // 最优组合牌
+            table.mapPlayer[addr].bestHand = bestHand;
         }
         uint256 highestRank = 0;
         address[] memory winners = new address[](table.playerAddrList.length);
@@ -557,7 +567,7 @@ contract TexasHoldem {
     }
 
     // 计算玩家的手牌排名
-    function calculateHandRank(uint256[] memory cards) pure internal returns (uint256) {
+    function calculateHandRank(uint256[] memory cards) pure internal returns (uint256, uint256[] memory) {
         return LibCard.calculateHandRank(cards);
     }
 }

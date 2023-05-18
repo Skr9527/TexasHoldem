@@ -40,6 +40,31 @@ describe("TexasHoldem", function () {
     console.log("       player:",playerAddr, ", get cards:[", card1.cardName, ",", card2.cardName + "]");
   }
 
+  // 获取牌型
+  function getCardType(cardType) {
+    switch(cardType) {
+      case 10:
+        return "皇家同花顺";
+      case 9:
+        return "同花顺";
+      case 8:
+        return "四条";
+      case 7:
+        return "满堂红（葫芦）";
+      case 6:
+        return "同花";
+      case 5:
+        return "顺子";
+      case 4:
+        return "三条";
+      case 3:
+        return "两对";      
+      case 2:
+        return "一对"; 
+      default:
+        return "高牌"; 
+    }
+  }
   // 查看公共的牌
   async function getBoardCardInfo(numTable) {
     info = await game.getTableInfo(numTable);
@@ -333,12 +358,53 @@ describe("TexasHoldem", function () {
         }
       }
       
+      // 游戏结束
+      expect(gameOver).to.equal(true);
+    });
+
+    // 获取游戏玩家的最优组合牌
+    it("Get the game player's optimal combination of cards", async function () {
+      // 获取游戏桌信息
+      tableInfo = await game.getTableInfo(numTable);
+      let logMsg = "";
+      for(i = 0; i < tableInfo.playerAddrList.length; i++) {
+        const playerAddr = tableInfo.playerAddrList[i];
+        // 获取玩家信息
+        playerInfo = await game.getPlayerInfo(numTable, playerAddr);
+        // 是否弃牌
+        const active = playerInfo.active;
+        // 获取组合牌的强弱
+        const handRank = parseInt(playerInfo.handRank, 10);
+        
+        // 获取最优牌
+        const bestHand = playerInfo.bestHand;
+        logMsg = "      player:" + playerAddr + ", active:" + active + ", bestHand:[ ";
+        isAdd = false;
+        for(j = 0; j < bestHand.length; j++) {
+          if(isAdd) {
+            logMsg += ", ";
+          }
+          const cardValue = parseInt(bestHand[j], 10);
+          cardInfo = await game.getNameByCardValue(cardValue);
+          // 添加牌
+          logMsg += cardInfo.cardName + " ";
+          isAdd = true;
+        }
+        // 牌型说明
+        logMsg += "], cardType: " + getCardType(handRank) + "\r\n";
+        console.log(logMsg);
+      }
+      
+    });
+
+    // 游戏结束，验证清结算结果
+    it("The game is over, and the settlement result is verified and cleared", async function () {
       // 清结算
       tableInfo = await game.getTableInfo(numTable);
       expect(tableInfo.pot).to.equal(0);
       expect(tableInfo.state).to.equal(PREFLOP);
-      // 游戏结束
-      expect(gameOver).to.equal(true);
     });
   });
+
+
 });
