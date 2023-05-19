@@ -104,11 +104,9 @@ Game-Dapp支持使用20代币进行结算，所以Game-Dapp中主要涉及两个
 
 - 总体流程图
 
-  ![][游戏总体流程]
+  ![](./images/overall_game_process.png)
 
 - 创建游戏桌
-
-  ![][创建游戏桌]
 
 - 玩家加入游戏
 
