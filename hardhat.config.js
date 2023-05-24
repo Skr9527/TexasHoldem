@@ -36,5 +36,15 @@ module.exports = {
         mnemonic: config.ethSeries.mnemonic,
       },
     },
+
+    dev: {
+      url: `http://192.168.31.117:6789`,
+      // 私钥方式
+      // accounts: [`0x${PRIVATE_KEY1}`,`0x${PRIVATE_KEY2}`,`0x${PRIVATE_KEY3}`,`0x${PRIVATE_KEY4}`,`0x${PRIVATE_KEY5}`],
+      // 助记词方式
+      accounts: {
+        mnemonic: config.ethSeries.mnemonic,
+      },
+    },
   }
 }

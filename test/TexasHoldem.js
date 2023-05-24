@@ -1,6 +1,13 @@
 const { expect } = require("chai");
+const { network } = require("hardhat");
 
 describe("TexasHoldem", function () {
+  // 同步标志：私链（单节点） -- 交易可以立即上链，可以立即查询交易回执；多节点 -- 交易上链会有延迟
+  let syncFlag = true;
+  // 使用异步方式的网络名称
+  const asyncNetsFlag = ["hardhat", "ganache", "local"];
+  let waitTxs = [];
+
   let ERC20Token;
   let erc20;
   let TexasHoldem;  // TexasHoldem合约对象
@@ -38,6 +45,15 @@ describe("TexasHoldem", function () {
     card1 = await game.getNameByCardValue(info.hand[0]);
     card2 = await game.getNameByCardValue(info.hand[1]);
     console.log("       player:",playerAddr, ", get cards:[", card1.cardName, ",", card2.cardName + "]");
+  }
+
+  // 等待交易
+  async function waitTxList() {
+    for (const tx of waitTxs) {
+      await tx.wait();
+    }
+    // 清空交易列表
+    waitTxs = [];
   }
 
   // 获取牌型
@@ -88,15 +104,18 @@ describe("TexasHoldem", function () {
 
   async function playerAction(tableId, player, action, raiseAmount = 0) {
     if("call" === action) {
-      await game.call(tableId, player.address);
+      waitTxs.push(await game.call(tableId, player.address));
     } else if("check" === action) {
-      await game.check(tableId, player.address);
+      waitTxs.push(await game.check(tableId, player.address));
     } else if("raise" === action) {
-      await game.raise(tableId, player.address, raiseAmount);
+      waitTxs.push(await game.raise(tableId, player.address, raiseAmount));
     } else if("fold" === action) {
-      await game.fold(tableId, player.address);
+      waitTxs.push(await game.fold(tableId, player.address));
     } 
-    
+
+    if(syncFlag) {
+      await waitTxList();
+    }
     tableInfo = await game.getTableInfo(tableId);
     playerInfo = await game.getPlayerInfo(tableId, player.address);
     // 当前玩家的下注数已达到最高
@@ -110,11 +129,50 @@ describe("TexasHoldem", function () {
   async function joinGame(player) {
     expect((await erc20.balanceOf(player.address))).to.equal(transferAmount);
     // 参与游戏
-    await game.connect(player).joinGame(approvalAmount);
+    waitTxs.push(await game.connect(player).joinGame(approvalAmount));
+    if(syncFlag) {
+      await waitTxList();
+    }
     expect((await erc20.balanceOf(player.address))).to.equal(transferAmount - approvalAmount);
   }
 
+  // 转账原生代币(同步模式)
+  async function transferNative(toAddrList = []) {
+    if(!syncFlag) return;
+    const provider = ethers.provider;
+    var privateKey = "0x02da90597bf4cef6621103622f27a31d65c0856a0a66ba2fd03e4663161f1c5b";
+    var wallet = new ethers.Wallet(privateKey, provider);
+    const totalBalance = await wallet.getBalance();
+    if(parseInt(totalBalance, 10) === 0) {
+      return;
+    }
+    // console.log("totalBalance:", totalBalance);
+
+    for(const addr in toAddrList) {
+      const balance = await provider.getBalance(addr);
+      if(parseInt(balance, 10) === 0) {
+        let tx = await wallet.sendTransaction({
+          // gasLimit: gasLimit,
+          // gasPrice: gasPrice,
+          to: addr,
+          value: parseInt(totalBalance, 10) / 10000
+        });
+        waitTxs.push(tx);
+      }
+    }
+
+    await waitTxList(); 
+  }
+
   before(async function () {
+    for(i = 0; i < asyncNetsFlag.length; i++) {
+      // 使用异步方法
+      if(network.name === asyncNetsFlag[i]) {
+        syncFlag = false;
+        break;
+      }
+    }
+
     [admin, player1, player2, player3, player4] = await ethers.getSigners();
     // 部署ERC20合约
     ERC20Token = await ethers.getContractFactory("ERC20");
@@ -124,24 +182,38 @@ describe("TexasHoldem", function () {
     // 部署TexasHoldem合约
     TexasHoldem = await ethers.getContractFactory("TexasHoldem");
     game = await TexasHoldem.deploy();
-    
+
+    // 转原生代币:player1, player2, player3, player4需要原生代币支付交易的手续费
+    transferNative([player1.address, player2.address, player3.address, player4.address])
+
     // 转token
-    await erc20.transfer(player1.address, transferAmount);
-    await erc20.transfer(player2.address, transferAmount);
-    await erc20.transfer(player3.address, transferAmount);
-    await erc20.transfer(player4.address, transferAmount);
+    waitTxs.push(await erc20.transfer(player1.address, transferAmount));
+    waitTxs.push(await erc20.transfer(player2.address, transferAmount));
+    waitTxs.push(await erc20.transfer(player3.address, transferAmount));
+    waitTxs.push(await erc20.transfer(player4.address, transferAmount));
+
+    // 同步模式
+    if(syncFlag) {
+      await waitTxList();
+    }
 
     // 授权筹码给游戏合约地址
-    await erc20.connect(player1).approve(game.address, approvalAmount);
-    await erc20.connect(player2).approve(game.address, approvalAmount);
-    await erc20.connect(player3).approve(game.address, approvalAmount);
-    await erc20.connect(player4).approve(game.address, approvalAmount);
+    waitTxs.push(await erc20.connect(player1).approve(game.address, approvalAmount));
+    waitTxs.push(await erc20.connect(player2).approve(game.address, approvalAmount));
+    waitTxs.push(await erc20.connect(player3).approve(game.address, approvalAmount));
+    waitTxs.push(await erc20.connect(player4).approve(game.address, approvalAmount));
+    if(syncFlag) {
+      await waitTxList();
+    }
   });
 
   // 创建游戏桌
   describe("CreateTable", function () {
     it("Admin creates game table.", async function () {
-      await game.createTable(smallBlind, bigBlind, tokenAddr);
+      waitTxs.push(await game.createTable(smallBlind, bigBlind, tokenAddr));
+      if(syncFlag) {
+        await waitTxList();
+      }
       info = await game.getTableInfo(tableId);
       expect(info.tokenAddr).to.equal(tokenAddr);
     });
@@ -174,7 +246,10 @@ describe("TexasHoldem", function () {
   // 启动游戏
   describe("StartGame", function () {
     it("Admin Start the Game", async function () {
-      await game.startRound(tableId);
+      waitTxs.push(await game.startRound(tableId));
+      if(syncFlag) {
+        await waitTxList();
+      }
       
       // 获取玩家将的卡牌
       await getPlayerCardInfo(tableId, player1.address);
@@ -336,8 +411,12 @@ describe("TexasHoldem", function () {
       // 解析交易回执中的事件
       const provider = ethers.provider;
       txReceipt = await game.check(tableId, player4.address);
+      if(syncFlag) {
+        waitTxs.push(txReceipt);
+        await waitTxList();
+      }
+      // 获取交易回执
       const receipt = await provider.getTransactionReceipt(txReceipt.hash);
-
       let gameOver = false;
       // 遍历事件日志
       for (const log of receipt.logs) {
