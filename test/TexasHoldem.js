@@ -20,10 +20,10 @@ describe("TexasHoldem", function () {
   const smallBlind = 1;
   const bigBlind = 2;
   let tokenAddr;
-  let numTable = 0; // 记录tableId
+  let tableId = 0; // 记录tableId
   const transferAmount = totalSupply / 1000;
   const approvalAmount = totalSupply / 100000;
-  const raiseAmount = 2 * bigBlind;  // 加注金额
+  // const raiseAmount = 2 * bigBlind;  // 加注金额
   const playerNum = 4;
 
   const PREFLOP = 0; // 游戏结束或未开始
@@ -33,8 +33,8 @@ describe("TexasHoldem", function () {
   const FINISH = 4; // 结束（最后一轮的下注）
 
   // 查看玩家的牌
-  async function getPlayerCardInfo(numTable, playerAddr) {
-    info = await game.getPlayerInfo(numTable, playerAddr);
+  async function getPlayerCardInfo(tableId, playerAddr) {
+    info = await game.getPlayerInfo(tableId, playerAddr);
     card1 = await game.getNameByCardValue(info.hand[0]);
     card2 = await game.getNameByCardValue(info.hand[1]);
     console.log("       player:",playerAddr, ", get cards:[", card1.cardName, ",", card2.cardName + "]");
@@ -66,8 +66,8 @@ describe("TexasHoldem", function () {
     }
   }
   // 查看公共的牌
-  async function getBoardCardInfo(numTable) {
-    info = await game.getTableInfo(numTable);
+  async function getBoardCardInfo(tableId) {
+    info = await game.getTableInfo(tableId);
     logMsg = "       board cards:[";
     let addFlag = false;
     for(i = 0; i < 5; i++) {
@@ -86,19 +86,19 @@ describe("TexasHoldem", function () {
     console.log(logMsg);
   }
 
-  async function playerAction(numTable, player, action) {
+  async function playerAction(tableId, player, action, raiseAmount = 0) {
     if("call" === action) {
-      await game.call(numTable, player.address);
+      await game.call(tableId, player.address);
     } else if("check" === action) {
-      await game.check(numTable, player.address);
+      await game.check(tableId, player.address);
     } else if("raise" === action) {
-      await game.raise(numTable, player.address, raiseAmount);
+      await game.raise(tableId, player.address, raiseAmount);
     } else if("fold" === action) {
-      await game.fold(numTable, player.address);
+      await game.fold(tableId, player.address);
     } 
     
-    tableInfo = await game.getTableInfo(numTable);
-    playerInfo = await game.getPlayerInfo(numTable, player.address);
+    tableInfo = await game.getTableInfo(tableId);
+    playerInfo = await game.getPlayerInfo(tableId, player.address);
     // 当前玩家的下注数已达到最高
     expect(tableInfo.highestBet).to.equal(playerInfo.bet);
     if("fold" === action) {
@@ -107,10 +107,10 @@ describe("TexasHoldem", function () {
   }
 
   // 参与游戏
-  async function joinGame(numTable, player) {
+  async function joinGame(player) {
     expect((await erc20.balanceOf(player.address))).to.equal(transferAmount);
     // 参与游戏
-    await game.connect(player).joinGame(numTable, approvalAmount);
+    await game.connect(player).joinGame(approvalAmount);
     expect((await erc20.balanceOf(player.address))).to.equal(transferAmount - approvalAmount);
   }
 
@@ -142,7 +142,7 @@ describe("TexasHoldem", function () {
   describe("CreateTable", function () {
     it("Admin creates game table.", async function () {
       await game.createTable(smallBlind, bigBlind, tokenAddr);
-      info = await game.getTableInfo(numTable);
+      info = await game.getTableInfo(tableId);
       expect(info.tokenAddr).to.equal(tokenAddr);
     });
   });
@@ -150,23 +150,23 @@ describe("TexasHoldem", function () {
   // 玩家参与游戏
   describe("JoinGame", function () {
     it("Player1 Join Game.", async function () {
-      await joinGame(numTable, player1);
+      await joinGame(player1);
     });
 
     it("Player2 Join Game.", async function () {
-      await joinGame(numTable, player2);
+      await joinGame(player2);
     });
 
     it("Player3 Join Game.", async function () {
-      await joinGame(numTable, player3);
+      await joinGame(player3);
     });
 
     it("Player4 Join Game.", async function () {
-      await joinGame(numTable, player4);
+      await joinGame(player4);
     });
 
     it("The number of players participating in the game should be 4", async function () {
-      info = await game.getTableInfo(numTable);
+      info = await game.getTableInfo(tableId);
       expect(info.playerAddrList.length).to.equal(playerNum);
     });
   });
@@ -174,15 +174,16 @@ describe("TexasHoldem", function () {
   // 启动游戏
   describe("StartGame", function () {
     it("Admin Start the Game", async function () {
-      await game.startRound(numTable);
+      await game.startRound(tableId);
       
       // 获取玩家将的卡牌
-      await getPlayerCardInfo(numTable, player1.address);
-      await getPlayerCardInfo(numTable, player2.address);
-      await getPlayerCardInfo(numTable, player3.address);
-      await getPlayerCardInfo(numTable, player4.address);
+      await getPlayerCardInfo(tableId, player1.address);
+      await getPlayerCardInfo(tableId, player2.address);
+      await getPlayerCardInfo(tableId, player3.address);
+      await getPlayerCardInfo(tableId, player4.address);
 
-      tableInfo = await game.getTableInfo(numTable);
+      tableInfo = await game.getTableInfo(tableId);
+      // console.log("tableInfo:", tableInfo);
       // 游戏状态
       expect(tableInfo.state).to.equal(FLOP);
       expect(tableInfo.dealer).to.equal(0);
@@ -191,79 +192,81 @@ describe("TexasHoldem", function () {
 
     // player4跟注，由amdin地址调用call函数
     it("player4 calls, called by admin address", async function () {
-      await playerAction(numTable, player4, "call");
+      await playerAction(tableId, player4, "call");
     });
 
     // player1跟注（庄家位），由amdin地址调用call函数
     it("player1(Dealer position) calls, called by admin address", async function () {
-      await playerAction(numTable, player1, "call");
+      await playerAction(tableId, player1, "call");
     });
 
     // player2跟注（小盲注位），由amdin地址调用call函数
     it("player2(small blind position) calls, called by admin address", async function () {
-      await playerAction(numTable, player2, "call");
+      await playerAction(tableId, player2, "call");
     });
 
     // player3查牌（大盲注位），由amdin地址调用check函数
     it("player3(big blind position) check cards, called by admin address", async function () {
-      await playerAction(numTable, player3, "check");
+      await playerAction(tableId, player3, "check");
       // 查看公共牌
-      await getBoardCardInfo(numTable);
+      await getBoardCardInfo(tableId);
     });
   });
 
   // TURN: 转牌轮游戏(加注，跟注轮)
   describe("TURN Round -- raise/call", function () {
     it("The game enters the TURN round.", async function () {
-      tableInfo = await game.getTableInfo(numTable);
+      tableInfo = await game.getTableInfo(tableId);
       expect(tableInfo.state).to.equal(TURN);
       expect(tableInfo.turn).to.equal(3);   // 轮到Player4
     });
 
     // player4加注，由amdin地址调用raise函数
     it("player4 raises, calls the raise function from the amdin address", async function () {
-      await playerAction(numTable, player4, "raise");
+      raiseAmount = await game.getRaiseAmount(tableId, player4.address);
+      // console.log("raiseAmount=====:", raiseAmount);
+      await playerAction(tableId, player4, "raise", raiseAmount);
     });
 
     // player1跟注（庄家位），由amdin地址调用call函数
     it("player1(Dealer position) calls, called by admin address", async function () {
-      await playerAction(numTable, player1, "call");
+      await playerAction(tableId, player1, "call");
     });
 
     // player2跟注（小盲注位），由amdin地址调用call函数
     it("player2(small blind position) calls, called by admin address", async function () {
-      await playerAction(numTable, player2, "call");
+      await playerAction(tableId, player2, "call");
     });
 
     // player3跟注（大盲注位），由amdin地址调用call函数
     it("player3 calls (big blind position) and calls the call function from the amdin address", async function () {
-      await playerAction(numTable, player3, "call");
+      await playerAction(tableId, player3, "call");
       // 查看公共牌
-      await getBoardCardInfo(numTable);
+      await getBoardCardInfo(tableId);
     });
   });
 
   // TURN: 转牌轮游戏(查牌轮)
   describe("TURN Round -- check", function () {
     it("The game enters the TURN round.", async function () {
-      tableInfo = await game.getTableInfo(numTable);
+      tableInfo = await game.getTableInfo(tableId);
       expect(tableInfo.state).to.equal(TURN);
       expect(tableInfo.turn).to.equal(3);   // 轮到Player4
     });
 
     // player4查牌，由amdin地址调用check函数
     it("player4 check card, call check function from amdin address", async function () {
-      await playerAction(numTable, player4, "check");
+      await playerAction(tableId, player4, "check");
     });
     
     // player1查牌（庄家位），由amdin地址调用check函数
     it("player1(Dealer position) check card, call check function from amdin address", async function () {
-      await playerAction(numTable, player1, "check");
+      await playerAction(tableId, player1, "check");
     });
 
     // player2查牌（小盲注位），由amdin地址调用check函数
     it("player2(small blind position) check card, call check function from amdin address", async function () {
-      await playerAction(numTable, player2, "check");
+      await playerAction(tableId, player2, "check");
     });
   });
 
@@ -271,68 +274,68 @@ describe("TexasHoldem", function () {
   describe("TURN Round -- fold", function () {
     // player3弃牌（大盲注位），由amdin地址调用fold函数
     it("player3(big blind position) fold card, call fold function from amdin address", async function () {
-      await playerAction(numTable, player3, "fold");
+      await playerAction(tableId, player3, "fold");
       // 查看公共牌
-      await getBoardCardInfo(numTable);
+      await getBoardCardInfo(tableId);
     });
 
     // player4查牌（新的翻牌位），由amdin地址调用check函数
     it("player4(new flop position) check card, call check function from amdin address", async function () {
-      await playerAction(numTable, player4, "check");
+      await playerAction(tableId, player4, "check");
       // 查看公共牌
-      await getBoardCardInfo(numTable);
+      await getBoardCardInfo(tableId);
     });
   });
 
   // RIVER: 河牌轮游戏
   describe("RIVER Round", function () {
     it("The game enters the RIVER round.", async function () {
-      tableInfo = await game.getTableInfo(numTable);
+      tableInfo = await game.getTableInfo(tableId);
       expect(tableInfo.state).to.equal(RIVER);
     });
 
     // player1查牌（庄家位），由amdin地址调用check函数
     it("player1(Dealer position) check card, call check function from amdin address", async function () {
-      await playerAction(numTable, player1, "check");
+      await playerAction(tableId, player1, "check");
     });
 
     // player2查牌（小盲注位），由amdin地址调用check函数
     it("player2(small blind position) check card, call check function from amdin address", async function () {
-      await playerAction(numTable, player2, "check");
+      await playerAction(tableId, player2, "check");
     });
 
     // 跳过player3（已弃牌）操作，player4查牌（新的翻牌位），由amdin地址调用check函数
     it("player4(new flop position) check card, call check function from amdin address", async function () {
-      await playerAction(numTable, player4, "check");
+      await playerAction(tableId, player4, "check");
       // 查看公共牌
-      await getBoardCardInfo(numTable);
+      await getBoardCardInfo(tableId);
     });
   });
 
   // FINISH: 结束（最后一轮的下注）
   describe("FINISH Round", function () {
     it("The game enters the FINISH round.", async function () {
-      tableInfo = await game.getTableInfo(numTable);
+      tableInfo = await game.getTableInfo(tableId);
       expect(tableInfo.state).to.equal(FINISH);
     });
 
     // player1查牌（庄家位），由amdin地址调用check函数
     it("player1(Dealer position) check card, call check function from amdin address", async function () {
-      await playerAction(numTable, player1, "check");
+      await playerAction(tableId, player1, "check");
     });
 
     // player2查牌（小盲注位），由amdin地址调用check函数
     it("player2(small blind position) check card, call check function from amdin address", async function () {
-      await playerAction(numTable, player2, "check");
+      await playerAction(tableId, player2, "check");
     });
 
     // 跳过player3（已弃牌）操作，player4查牌（新的翻牌位），由amdin地址调用check函数
     it("player4(new flop position) check card, call check function from amdin address", async function () {
-      // info = await playerAction(numTable, player4, "check");
+      // info = await playerAction(tableId, player4, "check");
 
       // 解析交易回执中的事件
       const provider = ethers.provider;
-      txReceipt = await game.check(numTable, player4.address);
+      txReceipt = await game.check(tableId, player4.address);
       const receipt = await provider.getTransactionReceipt(txReceipt.hash);
 
       let gameOver = false;
@@ -344,7 +347,7 @@ describe("TexasHoldem", function () {
         if (logInfo.name === "Winner") {
           logMsg = "      TableID:" + parseInt(logInfo.args._tableId, 10) + ", Winner Number:" + parseInt(logInfo.args._numWinners, 10) + ", Winner:[ ";
           for(i = 0; i < parseInt(logInfo.args._numWinners, 10); i++) {
-            // playerInfo = await game.getPlayerInfo(numTable, logInfo.args._winnerList[i]);
+            // playerInfo = await game.getPlayerInfo(tableId, logInfo.args._winnerList[i]);
             // logMsg += "player:" + logInfo.args._winnerList[i] + ", strength of cards:" + playerInfo.handRank + "\n";
 
             logMsg += logInfo.args._winnerList[i] + " ";
@@ -365,12 +368,12 @@ describe("TexasHoldem", function () {
     // 获取游戏玩家的最优组合牌
     it("Get the game player's optimal combination of cards", async function () {
       // 获取游戏桌信息
-      tableInfo = await game.getTableInfo(numTable);
+      tableInfo = await game.getTableInfo(tableId);
       let logMsg = "";
       for(i = 0; i < tableInfo.playerAddrList.length; i++) {
         const playerAddr = tableInfo.playerAddrList[i];
         // 获取玩家信息
-        playerInfo = await game.getPlayerInfo(numTable, playerAddr);
+        playerInfo = await game.getPlayerInfo(tableId, playerAddr);
         // 是否弃牌
         const active = playerInfo.active;
         // 获取组合牌的强弱
@@ -400,7 +403,7 @@ describe("TexasHoldem", function () {
     // 游戏结束，验证清结算结果
     it("The game is over, and the settlement result is verified and cleared", async function () {
       // 清结算
-      tableInfo = await game.getTableInfo(numTable);
+      tableInfo = await game.getTableInfo(tableId);
       expect(tableInfo.pot).to.equal(0);
       expect(tableInfo.state).to.equal(PREFLOP);
     });

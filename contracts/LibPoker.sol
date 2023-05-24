@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-// 牌相关的库
-library LibCard {
+// 扑克牌相关的库
+library LibPoker {
     // 根据牌值返回牌的花色和点数
     function getNameByCardValue(uint256 card) internal pure returns (uint256 suit, uint256 rank, string memory cardName) {
         string[4] memory cardColors = [unicode"♣", unicode"♦", unicode"♥", unicode"♠"];

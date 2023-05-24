@@ -1,13 +1,13 @@
 /**
 此游戏合约只用于研究区块链技术使用，不可用于非法的商业用途，否则将追究其法律责任！！！
 */
-import "./LibCard.sol";
-
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
-
+import "./LibPoker.sol";
+// import "hardhat/console.sol";
+// 此游戏合约遵循：限注式德州扑克（limit texas）的规则
 contract TexasHoldem {
-    using LibCard for *;
+    using LibPoker for *;
     // 状态常量
     uint8 private constant maxPlayers = 8; // 最大玩家数
     uint256 private constant PREFLOP = 0; // 翻牌前，游戏结束或未启动的标志
@@ -19,6 +19,8 @@ contract TexasHoldem {
     // 定义一个结构体表示玩家
     struct Player {
         uint256 bet; // 玩家当前下注的筹码数
+        uint256 firstRaiseStatus; // 首次加注时的游戏状态
+        uint256 raiseTimes; // 当前轮的加注次数
         uint256 handRank; // 玩家的手牌强弱
         uint256[] bestHand; // 玩家手中的牌和公共牌组成的最优牌
         uint256 balance; // 玩家的剩余筹码
@@ -52,7 +54,7 @@ contract TexasHoldem {
 
     // 定义游戏桌数组
     mapping (uint256 => Table) public tables;
-    uint256 public numTable;
+    uint256 public numTable = 0;
     
     /// @notice 创建游戏桌事件
     /// @dev 创建游戏桌事件
@@ -144,9 +146,9 @@ contract TexasHoldem {
     }
     
     // 构造函数
-    constructor() {
-        numTable = 0;
-    }
+    // constructor() {
+    //     numTable = 0;
+    // }
 
     // 是否轮到指定地址执行
     modifier isTurn(uint256 tableId, address addr) {
@@ -199,8 +201,19 @@ contract TexasHoldem {
         require(isSucceed, "Call transferFrom failed.");
     }
     
-    // 玩家参与游戏
-    function joinGame(uint256 tableId, uint256 chips) public isStop(tableId) enoughAllowedTokens(tableId, msg.sender, chips) {
+    // 玩家随机参与游戏
+    function joinGame(uint256 chips) public {
+        uint256 tableId = numTable;
+        if(numTable > 0) {
+            // 随机生成tableId
+            tableId = uint256(keccak256(abi.encodePacked(block.timestamp))) % (numTable);
+        }
+        // console.log( "=============== numTable: %d, TableID: %d ===============", numTable, tableId);
+        joinGameById(tableId, chips);
+    }
+
+    // 玩家参与指定游戏桌的游戏
+    function joinGameById(uint256 tableId, uint256 chips) public isStop(tableId) enoughAllowedTokens(tableId, msg.sender, chips) {
         Table storage table = tables[tableId];
         require(table.smallBlind > 0, "Game table not created.");
         require(chips >= table.bigBlind, "Player chips must be greater than the big blind.");
@@ -223,7 +236,7 @@ contract TexasHoldem {
 
     function getTableInfo(uint256 tableId) public view 
         returns (
-            uint256 state,
+            uint256 state,  // 游戏状态：PREFLOP，FLOP，TURN，RIVER，FINISH
             uint256 dealer, // 庄家
             uint256 smallBlind, // 小盲注
             uint256 bigBlind, // 大盲注
@@ -355,11 +368,55 @@ contract TexasHoldem {
         nextTurn(table, false);
     }
     
+    // 获取当前轮需要加注的总金额（包括跟注金额）
+    function getRaiseAmount(uint256 tableId, address player) public view inProcess(tableId) isActive(tableId, player) returns(uint256) {
+        Table storage table = tables[tableId];
+        // 跟注金额
+        uint256 callAmount = table.highestBet - table.mapPlayer[player].bet;
+        // 加注金额
+        if(FLOP == table.state || TURN == table.state) {
+            // 加注金额须和大盲注相同，称为“小注”
+            return (callAmount + table.bigBlind);
+        } else if(RIVER == table.state || FINISH == table.state) {
+            // 加注须等于大盲注的两倍，称为“大注”
+            return (callAmount + table.bigBlind * 2);
+        }
+        return 0;
+    }
+
     // 加注
+    /**
+    【规则】
+        1.每个玩家每轮最多只能加注四次；
+        2.前两轮（翻牌前和翻牌）下注（bet）和加注（raise）须和大盲注相同，称为“小注”；
+        3.其后两轮（转牌和河牌）的下注和加注须等于大盲注的两倍，称为“大注”；
+    */
     function raise(uint256 tableId, address player, uint256 amount) public isTurn(tableId, player) inProcess(tableId) isActive(tableId, player) {
         Table storage table = tables[tableId];
+        if(table.mapPlayer[player].firstRaiseStatus == table.state) {
+            // 当前轮加注次数
+            require(table.mapPlayer[player].raiseTimes < 4, "No more than 4 raises per player per round");
+            table.mapPlayer[player].raiseTimes++;
+        } else {
+            // 首次加注
+            table.mapPlayer[player].firstRaiseStatus = table.state;
+            table.mapPlayer[player].raiseTimes = 1;
+        }
+
+        // 跟注金额
+        uint256 callAmount = table.highestBet - table.mapPlayer[player].bet;
+        // 加注金额
+        if(FLOP == table.state || TURN == table.state) {
+            // 加注金额须和大盲注相同，称为“小注”
+            require(amount == (callAmount + table.bigBlind), "The total amount raised is not equal to the sum of the call amount and the small bet");
+        } else if(RIVER == table.state || FINISH == table.state) {
+            // 加注须等于大盲注的两倍，称为“大注”
+            require(amount == (callAmount + table.bigBlind * 2), "The total amount raised is not equal to the sum of the call amount and the big bet");
+        }
+        
         // 确认当前加注数量是否高于当前追加的注额
-        require(amount > table.highestBet - table.mapPlayer[player].bet, "Bet not high enough");
+        // require(amount > table.highestBet - table.mapPlayer[player].bet, "Bet not high enough");
+
         // 确认加注数量是否不高于当前余额
         require(amount <= table.mapPlayer[player].balance, "Not enough balance");
         // 更新状态变量
@@ -563,11 +620,11 @@ contract TexasHoldem {
     
     // 根据牌值返回牌的花色和点数
     function getNameByCardValue(uint256 card) pure public returns (uint256 suit, uint256 rank, string memory cardName) {
-        return LibCard.getNameByCardValue(card);
+        return LibPoker.getNameByCardValue(card);
     }
 
     // 计算玩家的手牌排名
     function calculateHandRank(uint256[] memory cards) pure internal returns (uint256, uint256[] memory) {
-        return LibCard.calculateHandRank(cards);
+        return LibPoker.calculateHandRank(cards);
     }
 }
