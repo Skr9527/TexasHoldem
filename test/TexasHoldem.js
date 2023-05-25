@@ -48,8 +48,11 @@ describe("TexasHoldem", function () {
   }
 
   // 等待交易
-  async function waitTxList() {
+  async function waitTxList(EventName = "") {
     for (const tx of waitTxs) {
+      if(EventName !== "") {
+        console.log("EventName:", EventName, ", tx:", tx.hash);
+      }
       await tx.wait();
     }
     // 清空交易列表
@@ -114,7 +117,7 @@ describe("TexasHoldem", function () {
     } 
 
     if(syncFlag) {
-      await waitTxList();
+      await waitTxList(action);
     }
     tableInfo = await game.getTableInfo(tableId);
     playerInfo = await game.getPlayerInfo(tableId, player.address);
@@ -131,37 +134,44 @@ describe("TexasHoldem", function () {
     // 参与游戏
     waitTxs.push(await game.connect(player).joinGame(approvalAmount));
     if(syncFlag) {
-      await waitTxList();
+      await waitTxList("joinGame");
     }
     expect((await erc20.balanceOf(player.address))).to.equal(transferAmount - approvalAmount);
   }
 
   // 转账原生代币(同步模式)
   async function transferNative(toAddrList = []) {
+    if(0 === toAddrList.length) {
+      return;
+    }
+
     if(!syncFlag) return;
     const provider = ethers.provider;
     var privateKey = "0x02da90597bf4cef6621103622f27a31d65c0856a0a66ba2fd03e4663161f1c5b";
     var wallet = new ethers.Wallet(privateKey, provider);
     const totalBalance = await wallet.getBalance();
-    if(parseInt(totalBalance, 10) === 0) {
+    const transferAmount = ethers.utils.parseEther("1");
+    if(parseInt(totalBalance, 10) === 0 || parseInt(totalBalance, 10) < transferAmount / toAddrList.length) {
       return;
     }
-    // console.log("totalBalance:", totalBalance);
-
-    for(const addr in toAddrList) {
+    // console.log("totalBalance:", parseInt(totalBalance, 10));
+    // console.log("transferAmount:", transferAmount);
+    for(const addr of toAddrList) {
       const balance = await provider.getBalance(addr);
-      if(parseInt(balance, 10) === 0) {
+      // console.log("balance:", balance);
+      if(parseInt(balance, 10) === 0) 
+      {
         let tx = await wallet.sendTransaction({
           // gasLimit: gasLimit,
           // gasPrice: gasPrice,
           to: addr,
-          value: parseInt(totalBalance, 10) / 10000
+          value: transferAmount
         });
         waitTxs.push(tx);
       }
     }
 
-    await waitTxList(); 
+    await waitTxList("Transfer"); 
   }
 
   before(async function () {
@@ -182,9 +192,9 @@ describe("TexasHoldem", function () {
     // 部署TexasHoldem合约
     TexasHoldem = await ethers.getContractFactory("TexasHoldem");
     game = await TexasHoldem.deploy();
-
+    
     // 转原生代币:player1, player2, player3, player4需要原生代币支付交易的手续费
-    transferNative([player1.address, player2.address, player3.address, player4.address])
+    transferNative([player1.address, player2.address, player3.address, player4.address]);
 
     // 转token
     waitTxs.push(await erc20.transfer(player1.address, transferAmount));
@@ -212,7 +222,8 @@ describe("TexasHoldem", function () {
     it("Admin creates game table.", async function () {
       waitTxs.push(await game.createTable(smallBlind, bigBlind, tokenAddr));
       if(syncFlag) {
-        await waitTxList();
+        console.log("game address:", game.address);
+        await waitTxList("CreateTable");
       }
       info = await game.getTableInfo(tableId);
       expect(info.tokenAddr).to.equal(tokenAddr);
@@ -248,7 +259,7 @@ describe("TexasHoldem", function () {
     it("Admin Start the Game", async function () {
       waitTxs.push(await game.startRound(tableId));
       if(syncFlag) {
-        await waitTxList();
+        await waitTxList("StartRound");
       }
       
       // 获取玩家将的卡牌
@@ -413,7 +424,7 @@ describe("TexasHoldem", function () {
       txReceipt = await game.check(tableId, player4.address);
       if(syncFlag) {
         waitTxs.push(txReceipt);
-        await waitTxList();
+        await waitTxList("EndRound");
       }
       // 获取交易回执
       const receipt = await provider.getTransactionReceipt(txReceipt.hash);
