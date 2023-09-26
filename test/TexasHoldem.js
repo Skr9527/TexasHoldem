@@ -7,7 +7,8 @@ describe("TexasHoldem", function () {
   // 使用异步方式的网络名称
   const asyncNetsFlag = ["hardhat", "ganache", "local"];
   let waitTxs = [];
-
+  // 总账户私钥
+  const privateKey = "0x02da90597bf4cef6621103622f27a31d65c0856a0a66ba2fd03e4663161f1c5b";
   let ERC20Token;
   let erc20;
   let TexasHoldem;  // TexasHoldem合约对象
@@ -144,12 +145,14 @@ describe("TexasHoldem", function () {
     if(0 === toAddrList.length) {
       return;
     }
-
+    console.log("transferNative===========================");
     if(!syncFlag) return;
     const provider = ethers.provider;
-    var privateKey = "0x02da90597bf4cef6621103622f27a31d65c0856a0a66ba2fd03e4663161f1c5b";
+    console.log("provider============:", provider);
     var wallet = new ethers.Wallet(privateKey, provider);
+    console.log("wallet============:", wallet);
     const totalBalance = await wallet.getBalance();
+    console.log("totalBalance==========:", totalBalance);
     const transferAmount = ethers.utils.parseEther("1");
     if(parseInt(totalBalance, 10) === 0 || parseInt(totalBalance, 10) < transferAmount / toAddrList.length) {
       return;
@@ -195,7 +198,6 @@ describe("TexasHoldem", function () {
     
     // 转原生代币:player1, player2, player3, player4需要原生代币支付交易的手续费
     transferNative([player1.address, player2.address, player3.address, player4.address]);
-
     // 转token
     waitTxs.push(await erc20.transfer(player1.address, transferAmount));
     waitTxs.push(await erc20.transfer(player2.address, transferAmount));

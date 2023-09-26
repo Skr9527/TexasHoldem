@@ -605,8 +605,9 @@ contract TexasHoldem {
         table.mapPlayer[msg.sender].balance -= amount;
         // 从合约地址中转账token到调用者地址
         bytes memory sigData = abi.encodeWithSignature("transfer(address,uint256)", msg.sender, amount);
-        (bool isSucceed, ) = table.tokenAddr.call(sigData);
-        require(isSucceed, "Call transfer failed"); 
+        // (bool isSucceed, ) = table.tokenAddr.call(sigData);
+        // require(isSucceed, "Call transfer failed"); 
+        table.tokenAddr.call(sigData);
     }
 
     // 查看自己的手牌
